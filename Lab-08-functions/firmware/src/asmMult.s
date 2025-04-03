@@ -19,7 +19,7 @@
 .type nameStr,%gnu_unique_object
     
 /*** STUDENTS: Change the next line to your name!  **/
-nameStr: .asciz "Inigo Montoya"  
+nameStr: .asciz "Edward Guerra Ramirez"  
 
 .align   /* realign so that next mem allocations are on word boundaries */
  
@@ -85,6 +85,15 @@ asmUnpack:
     
     /*** STUDENTS: Place your asmUnpack code BELOW this line!!! **************/
     
+    lsrs r3, r0, #16      /* Extracts the upper 16 bits from r0 (assumed multiplicand), stores in r3 */
+    sxth r3, r3           /* Sign-extends the upper 16 bits to 32 bits */
+    str r3, [r1]          /* Stores the sign-extended upper 16 bits to the address pointed to by r1 */
+
+    uxth r3, r0           /* Extracts the lower 16 bits from r0 (assumed multiplier), store in r3 */
+    sxth r3, r3           /* Sign-extends the lower 16 bits to 32 bits */
+    str r3, [r2]          /* Store the sign-extended lower 16 bits to the address pointed to by r2 */
+    bx lr                 /* Return from function */
+    
     /*** STUDENTS: Place your asmUnpack code ABOVE this line!!! **************/
 
 
@@ -103,6 +112,25 @@ asmAbs:
 
     /*** STUDENTS: Place your asmAbs code BELOW this line!!! **************/
     
+    cmp r0, #0              /* Compare r0 (input value) with 0 */
+    bge is_positive         /* If r0 >= 0, branch to is_positive */
+
+    /* Handle negative input */
+    mvn r3, r0              /* r3 = bitwise NOT of r0 (~r0) */
+    add r3, r3, #1          /* r3 = -r0 (compute absolute value using two's complement) */
+    str r3, [r1]            /* Store the absolute value at address pointed to by r1 */
+    mov r0, r3              /* Copy absolute value into r0 as the return value */
+    movs r3, #1             /* Set r3 = 1 to indicate negative sign */
+    str r3, [r2]            /* Store sign = 1 at address pointed to by r2 */
+    bx lr                   /* Return from function */
+
+    is_positive:
+    /* Handle non-negative input */
+    str r0, [r1]            /* Store r0 directly as absolute value */
+    movs r3, #0             /* Set r3 = 0 to indicate non-negative sign */
+    str r3, [r2]            /* Store sign = 0 at address pointed to by r2 */
+    /* r0 already contains the correct absolute value */
+    bx lr                   /* Return from function */
 
     /*** STUDENTS: Place your asmAbs code ABOVE this line!!! **************/
 
@@ -119,6 +147,8 @@ asmMult:
 
     /*** STUDENTS: Place your asmMult code BELOW this line!!! **************/
 
+    mul r0, r0, r1        /* Multiply r0 by r1, store result in r0 */
+    bx lr                 /* Return from function */
 
     /*** STUDENTS: Place your asmMult code ABOVE this line!!! **************/
 
@@ -141,6 +171,14 @@ asmFixSign:
     
     /*** STUDENTS: Place your asmFixSign code BELOW this line!!! **************/
 
+    eor r3, r1, r2        /* r3 = r1 ^ r2 (XOR the signs of A and B to determine result sign) */
+    cmp r3, #0            /* Check if the result sign is 0 (i.e., signs are the same) */
+    beq no_negate         /* If signs are the same, no need to negate the result */
+
+    rsb r0, r0, #0        /* Negate r0: r0 = -r0 (if signs were different) */
+
+    no_negate:
+    bx lr                 /* Return from function */
     
     /*** STUDENTS: Place your asmFixSign code ABOVE this line!!! **************/
 
@@ -164,55 +202,51 @@ asmFixSign:
  */  
 asmMain:   
     
-    /*** STUDENTS: Place your asmMain code BELOW this line!!! **************/
+    /*** STUDENTS: Place your asmMain code BELOW this line!!! **************/		    
     
-    /* Step 1:
-     * call asmUnpack. Have it store the output values in a_Multiplicand
-     * and b_Multiplier.
-     */
+    /* Step 1: unpack */
+    ldr r1, =a_Multiplicand     /* Load address of a_Multiplicand into r1 */
+    ldr r2, =b_Multiplier       /* Load address of b_Multiplier into r2 */
+    bl asmUnpack                /* Call asmUnpack to extract and store signed 16-bit values */
 
+    /* Step 2a: abs(a) */
+    ldr r0, =a_Multiplicand     /* Load address of a_Multiplicand into r0 */
+    ldr r0, [r0]                /* Load the actual value of a_Multiplicand into r0 */
+    ldr r1, =a_Abs              /* Load address of a_Abs into r1 (for output) */
+    ldr r2, =a_Sign             /* Load address of a_Sign into r2 (for output) */
+    bl asmAbs                   /* Call asmAbs to compute absolute value and sign of a */
 
-     /* Step 2a:
-      * call asmAbs for the multiplicand (a). Have it store the absolute value
-      * in a_Abs, and the sign in a_Sign.
-      */
+    /* Step 2b: abs(b) */
+    ldr r0, =b_Multiplier       /* Load address of b_Multiplier into r0 */
+    ldr r0, [r0]                /* Load the actual value of b_Multiplier into r0 */
+    ldr r1, =b_Abs              /* Load address of b_Abs into r1 (for output) */
+    ldr r2, =b_Sign             /* Load address of b_Sign into r2 (for output) */
+    bl asmAbs                   /* Call asmAbs to compute absolute value and sign of b */
 
+    /* Step 3: multiply */
+    ldr r0, =a_Abs              /* Load address of a_Abs into r0 */
+    ldr r0, [r0]                /* Load the value of a_Abs into r0 */
+    ldr r1, =b_Abs              /* Load address of b_Abs into r1 */
+    ldr r1, [r1]                /* Load the value of b_Abs into r1 */
+    bl asmMult                  /* Call asmMult to multiply a_Abs and b_Abs */
+    mov r4, r0                  /* Store result of multiplication in r4 */
+    ldr r3, =init_Product				
+    str r4, [r3]                /* Save the initial product before sign correction */
 
+    /* Step 4: fix sign */
+    mov r0, r4                  /* Move initial product into r0 for sign correction */
+    ldr r1, =a_Sign             /* Load address of a_Sign into r1 */
+    ldr r1, [r1]                /* Load the sign of a into r1 */
+    ldr r2, =b_Sign             /* Load address of b_Sign into r2 */
+    ldr r2, [r2]                /* Load the sign of b into r2 */
+    bl asmFixSign              /* Call asmFixSign to apply the correct sign to the product */
 
-     /* Step 2b:
-      * call asmAbs for the multiplier (b). Have it store the absolute value
-      * in b_Abs, and the sign in b_Sign.
-      */
+    /* Step 5: store final result */
+    mov r4, r0                  /* Moves final signed product into r4 */
+    ldr r3, =final_Product      /* Loads address of final_Product into r3 */
+    str r4, [r3]                /* Stores the final product */
+    bx lr                       /* Returns from the function */
 
-
-
-    /* Step 3:
-     * call asmMult. Pass a_Abs as the multiplicand, 
-     * and b_Abs as the multiplier.
-     * asmMult returns the initial (positive) product in r0.
-     * In this function (asmMain), store the output value  
-     * returned asmMult in r0 to mem location init_Product.
-     */
-
-
-    /* Step 4:
-     * call asmFixSign. Pass in the initial product, and the
-     * sign bits for the original a and b inputs. 
-     * asmFixSign returns the final product with the correct
-     * sign. Store the value returned in r0 to mem location 
-     * final_Product.
-     */
-
-
-     /* Step 5:
-      * END! Return to caller. Make sure of the following:
-      * 1) Stack has been correctly managed.
-      * 2) the final answer is stored in r0, so that the C call 
-      *    can access it.
-      */
-
-
-    
     /*** STUDENTS: Place your asmMain code ABOVE this line!!! **************/
 
 
